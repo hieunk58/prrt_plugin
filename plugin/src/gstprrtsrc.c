@@ -1,5 +1,7 @@
 #include "gstprrtsrc.h"
 
+static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass);
+
 static GstStaticPadTemplate src_factory =
 GST_STATIC_PAD_TEMPLATE (
     "src",
@@ -7,6 +9,19 @@ GST_STATIC_PAD_TEMPLATE (
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS_ANY
 );
+
+/* _class_init() is used to initialized the prrtsrc class only once
+* (specifying what signals, arguments and virtual functions the class has
+* and setting up global state)
+*/
+static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass) {
+    GST_DEBUG ("gst_prrtsrc_class_init");
+    GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
+    GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+    // add pad template
+    gst_element_class_add_static_pad_template (element_class, &src_factory);
+}
 
 /* plugin_init is a special function which is called
 * as soon as the plugin is loaded
