@@ -8,6 +8,12 @@
 
 G_BEGIN_DECLS
 
+#define GST_TYPE_PRRTSRC (gst_prrtsrc_get_type())
+#define GST_PRRTSRC(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_PRRTSRC, GstPRRTSrc))
+#define GST_PRRTSRC_CLASS(klass) (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_PRRTSRC, GstControlSourceClass))
+#define GST_IS_PRRTSRC(obj) (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_PRRTSRC))
+#define GST_IS_PRRTSRC_CLASS(klass) (G_TYPE_CHECK_INSTANCE_TYPE((klass), GST_TYPE_PRRTSRC))
+
 typedef struct _GstPRRTSrc      GstPRRTSrc;
 typedef struct _GstPRRTSrcClass GstPRRTSrcClass;
 
