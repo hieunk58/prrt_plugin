@@ -25,7 +25,7 @@ struct _GstPRRTSrc
     //PrrtSocket *recv_socket;
 
     /* properties */
-    gint port;
+    guint16 port;
     guint32 max_buff_size;
     GstCaps *caps;
 

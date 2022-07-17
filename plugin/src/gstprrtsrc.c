@@ -2,6 +2,14 @@
 
 #include <gst/gst.h>
 
+/* PROPERTIES */
+enum {
+    PROP_0,
+
+    PROP_PORT,
+    PROP_CAPS
+};
+
 static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass);
 static void gst_prrtsrc_init (GstPRRTSrc *prrt_src);
 static gboolean gst_prrtsrc_src_query (GstPad *pad, GstObject *parent, 
@@ -9,7 +17,10 @@ static gboolean gst_prrtsrc_src_query (GstPad *pad, GstObject *parent,
 static GstStateChangeReturn
 gst_prrtsrc_change_state (GstElement *element, GstStateChange transition);
 static GstCaps *gst_prrtsrc_getcaps (GstBaseSrc *src, GstCaps *filter);
+static void gst_prrtsrc_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec);
 
+ 
 static GstStaticPadTemplate src_factory =
 GST_STATIC_PAD_TEMPLATE (
     "src",
@@ -30,6 +41,8 @@ static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass) {
     GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
     GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
+    object_class->set_property = gst_prrtsrc_set_property;
+
     // add pad template
     gst_element_class_add_static_pad_template (element_class, &src_factory);
 }
@@ -41,12 +54,50 @@ static void gst_prrtsrc_init (GstPRRTSrc *prrt_src) {
     // TODO set some default values for plugin
 
     /* configure basesrc to be a live source */
-  gst_base_src_set_live (GST_BASE_SRC (prrt_src), TRUE);
-  /* make basesrc output a segment in time */
-  gst_base_src_set_format (GST_BASE_SRC (prrt_src), GST_FORMAT_TIME);
-  /* make basesrc set timestamps on outgoing buffers based on the running_time
-   * when they were captured */
-  gst_base_src_set_do_timestamp (GST_BASE_SRC (prrt_src), TRUE);
+    gst_base_src_set_live (GST_BASE_SRC (prrt_src), TRUE);
+    /* make basesrc output a segment in time */
+    gst_base_src_set_format (GST_BASE_SRC (prrt_src), GST_FORMAT_TIME);
+    /* make basesrc set timestamps on outgoing buffers based on the running_time
+    * when they were captured */
+    gst_base_src_set_do_timestamp (GST_BASE_SRC (prrt_src), TRUE);
+}
+
+static void 
+gst_prrtsrc_set_property (GObject * object, guint prop_id, const GValue * value, 
+    GParamSpec * pspec) {
+    GstPRRTSrc *prrtsrc = GST_PRRTSRC (object);
+
+    switch (prop_id)
+    {
+    case PROP_PORT:
+        prrtsrc->port = g_value_get_uint (value);
+        GST_DEBUG ("port: %u", prrtsrc->port);
+        break;
+    case PROP_CAPS:
+        const GstCaps *new_caps_val = gst_value_get_caps (value);
+        GstCaps *new_caps;
+        GstCaps *old_caps;
+
+        if (new_caps_val == NULL) {
+            new_caps = gst_caps_new_any ();
+        } else {
+            new_caps = gst_caps_copy (new_caps_val);
+        }
+
+        GST_OBJECT_LOCK (prrtsrc);
+        old_caps = prrtsrc->caps;
+        prrtsrc->caps = new_caps;
+        GST_OBJECT_UNLOCK (prrtsrc);
+
+        if (old_caps)
+            gst_caps_unref (old_caps);
+        
+        gst_pad_mark_reconfigure (GST_BASE_SRC_PAD (prrtsrc));
+        break;
+    default:
+        G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+        break;
+    }
 }
 
 /* queries like position, duration, supported formats
