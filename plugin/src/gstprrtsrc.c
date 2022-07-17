@@ -2,6 +2,8 @@
 
 #include <gst/gst.h>
 
+#define PRRT_DEFAULT_PORT 5000
+
 /* PROPERTIES */
 enum {
     PROP_0,
@@ -40,14 +42,41 @@ G_DEFINE_TYPE (GstPRRTSrc, gst_prrtsrc, GST_TYPE_PUSH_SRC);
 */
 static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass) {
     GST_DEBUG ("gst_prrtsrc_class_init");
-    GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
-    GObjectClass *object_class = G_OBJECT_CLASS (klass);
+    GObjectClass    *gobject_class;
+    GstElementClass *gstelement_class;
+    GstBaseSrcClass *gstbasesrc_class;
+    GstPushSrcClass *gstpushsrc_class;
 
-    object_class->set_property = gst_prrtsrc_set_property;
-    object_class->get_property = gst_prrtsrc_get_property;
+    gobject_class    = (GObjectClass *) klass;
+    gstelement_class = (GstElementClass *) klass;
+    gstbasesrc_class = (GstBaseSrcClass *) klass;
+    gstpushsrc_class = (GstPushSrcClass *) klass;
+
+    gobject_class->set_property = gst_prrtsrc_set_property;
+    gobject_class->get_property = gst_prrtsrc_get_property;
+
+    g_object_class_install_property (gobject_class, PROP_PORT,
+        g_param_spec_uint ("port", "Port", 
+            "The port to receive the packets from", 0, G_MAXUINT16,
+            PRRT_DEFAULT_PORT, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+    g_object_class_install_property (gobject_class, PROP_CAPS,
+        g_param_spec_boxed ("caps", "Caps",
+          "The caps of the source pad", GST_TYPE_CAPS,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
     // add pad template
-    gst_element_class_add_static_pad_template (element_class, &src_factory);
+    gst_element_class_add_static_pad_template (gstelement_class, &src_factory);
+
+    gst_element_class_set_static_metadata (gstelement_class,
+        "PRRT packet receiver", "Source/Network",
+        "Receive data over the network via PRRT",
+        "Hieu Nguyen <khachieunk@gmail.com>");
+
+    gstelement_class->change_state = gst_prrtsrc_change_state;
+
+    gstbasesrc_class->get_caps = gst_prrtsrc_getcaps;
+    // TODO decide_allocation, unlock, unlock_stop
+
 }
 
 /* _init() function is used to initialize a specific instance of prrtsrc type */
@@ -55,7 +84,10 @@ static void gst_prrtsrc_init (GstPRRTSrc *prrt_src) {
     GST_DEBUG ("gst_prrtsrc_init");
 
     // TODO set some default values for plugin
+    prrt_src->port = PRRT_DEFAULT_PORT;
 
+    gst_pad_set_query_function (GST_BASE_SRC_PAD (prrt_src), gst_prrtsrc_src_query);
+    
     /* configure basesrc to be a live source */
     gst_base_src_set_live (GST_BASE_SRC (prrt_src), TRUE);
     /* make basesrc output a segment in time */
