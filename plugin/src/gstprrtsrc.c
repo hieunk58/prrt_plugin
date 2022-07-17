@@ -1,9 +1,13 @@
 #include "gstprrtsrc.h"
 
+#include <gst/gst.h>
+
 static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass);
 static void gst_prrtsrc_init (GstPRRTSrc *prrt_src);
 static gboolean gst_prrtsrc_src_query (GstPad *pad, GstObject *parent, 
     GstQuery *query);
+static GstStateChangeReturn
+gst_prrtsrc_change_state (GstElement *element, GstStateChange transition);
 
 static GstStaticPadTemplate src_factory =
 GST_STATIC_PAD_TEMPLATE (
@@ -12,6 +16,9 @@ GST_STATIC_PAD_TEMPLATE (
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS_ANY
 );
+
+#define gst_prrtsrc_parent_class parent_class
+G_DEFINE_TYPE (GstPRRTSrc, gst_prrtsrc, GST_TYPE_PUSH_SRC);
 
 /* _class_init() is used to initialized the prrtsrc class only once
 * (specifying what signals, arguments and virtual functions the class has
@@ -67,6 +74,42 @@ gst_prrtsrc_src_query (GstPad *pad, GstObject *parent, GstQuery *query) {
     return ret;
 }
 
+static GstStateChangeReturn
+gst_prrtsrc_change_state (GstElement *element, GstStateChange transition) {
+    GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+    GstPRRTSrc *src = GST_PRRTSRC (element);
+
+    switch (transition)
+    {
+    case GST_STATE_CHANGE_NULL_TO_READY:
+        // TODO call function to open socket for listening
+        break;
+    default:
+        break;
+    }
+
+    ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+        goto failure;
+    }
+
+    switch (transition)
+    {
+    case GST_STATE_CHANGE_READY_TO_NULL:
+        // TODO close socket, free memory
+        break;
+    default:
+        break;
+    }
+
+    return ret;
+
+failure:
+    {
+        GST_DEBUG_OBJECT (src, "parent failed state change");
+        return ret;
+    }
+}
 
 /* plugin_init is a special function which is called
 * as soon as the plugin is loaded
