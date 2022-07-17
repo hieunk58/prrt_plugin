@@ -27,6 +27,7 @@ struct _GstPRRTSrc
     /* properties */
     gint port;
     guint32 max_buff_size;
+    GstCaps *caps;
 
 
     /* ring buffer */

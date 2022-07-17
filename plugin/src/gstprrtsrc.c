@@ -8,6 +8,7 @@ static gboolean gst_prrtsrc_src_query (GstPad *pad, GstObject *parent,
     GstQuery *query);
 static GstStateChangeReturn
 gst_prrtsrc_change_state (GstElement *element, GstStateChange transition);
+static GstCaps *gst_prrtsrc_getcaps (GstBaseSrc *src, GstCaps *filter);
 
 static GstStaticPadTemplate src_factory =
 GST_STATIC_PAD_TEMPLATE (
@@ -109,6 +110,31 @@ failure:
         GST_DEBUG_OBJECT (src, "parent failed state change");
         return ret;
     }
+}
+
+static GstCaps *gst_prrtsrc_getcaps (GstBaseSrc *src, GstCaps *filter) {
+    GstPRRTSrc *prrtsrc;
+    GstCaps *caps, *result;
+
+    prrtsrc = GST_PRRTSRC (src);
+
+    GST_OBJECT_LOCK (src);
+    if ((caps == prrtsrc->caps))
+        gst_caps_ref (caps);
+    GST_OBJECT_UNLOCK (src);
+
+    if (caps) {
+        if (filter) {
+            result = gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
+            gst_caps_unref (caps); 
+        } else {
+            result = caps;
+        }
+    } else {
+        result = (filter) ? gst_caps_ref (filter) : gst_caps_new_any ();
+    }
+
+    return result;
 }
 
 /* plugin_init is a special function which is called
