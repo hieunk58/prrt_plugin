@@ -19,6 +19,8 @@ gst_prrtsrc_change_state (GstElement *element, GstStateChange transition);
 static GstCaps *gst_prrtsrc_getcaps (GstBaseSrc *src, GstCaps *filter);
 static void gst_prrtsrc_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
+static void gst_prrtsrc_get_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec);
 
  
 static GstStaticPadTemplate src_factory =
@@ -42,6 +44,7 @@ static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass) {
     GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
     object_class->set_property = gst_prrtsrc_set_property;
+    object_class->get_property = gst_prrtsrc_get_property;
 
     // add pad template
     gst_element_class_add_static_pad_template (element_class, &src_factory);
@@ -73,7 +76,7 @@ gst_prrtsrc_set_property (GObject * object, guint prop_id, const GValue * value,
         prrtsrc->port = g_value_get_uint (value);
         GST_DEBUG ("port: %u", prrtsrc->port);
         break;
-    case PROP_CAPS:
+    case PROP_CAPS: {
         const GstCaps *new_caps_val = gst_value_get_caps (value);
         GstCaps *new_caps;
         GstCaps *old_caps;
@@ -94,8 +97,28 @@ gst_prrtsrc_set_property (GObject * object, guint prop_id, const GValue * value,
         
         gst_pad_mark_reconfigure (GST_BASE_SRC_PAD (prrtsrc));
         break;
+    }
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+        break;
+    }
+}
+
+static void gst_prrtsrc_get_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec) {
+    GstPRRTSrc *prrtsrc = GST_PRRTSRC (object);
+    switch (prop_id)
+    {
+    case PROP_PORT:
+        g_value_set_uint (value, prrtsrc->port);
+        break;
+    case PROP_CAPS:
+        GST_OBJECT_LOCK (prrtsrc);
+        gst_value_set_caps (value, prrtsrc->caps);
+        GST_OBJECT_UNLOCK (prrtsrc);
+        break;
+    default:
+        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
         break;
     }
 }
