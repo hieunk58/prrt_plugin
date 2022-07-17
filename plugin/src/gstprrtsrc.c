@@ -2,6 +2,8 @@
 
 static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass);
 static void gst_prrtsrc_init (GstPRRTSrc *prrt_src);
+static gboolean gst_prrtsrc_src_query (GstPad *pad, GstObject *parent, 
+    GstQuery *query);
 
 static GstStaticPadTemplate src_factory =
 GST_STATIC_PAD_TEMPLATE (
@@ -38,6 +40,33 @@ static void gst_prrtsrc_init (GstPRRTSrc *prrt_src) {
    * when they were captured */
   gst_base_src_set_do_timestamp (GST_BASE_SRC (prrt_src), TRUE);
 }
+
+/* queries like position, duration, supported formats
+* queries can be both upstream and downstream
+*/
+static gboolean 
+gst_prrtsrc_src_query (GstPad *pad, GstObject *parent, GstQuery *query) {
+    gboolean ret = TRUE;
+    switch (GST_QUERY_TYPE (query))
+    {
+    case GST_QUERY_POSITION:
+        /* report the current position */     
+        break;
+    case GST_QUERY_DURATION:
+        /* report the duration */     
+        break;
+    case GST_QUERY_CAPS:
+        /* report the supported caps */     
+        break;
+    default:
+        /* call the default handler */
+        ret = gst_pad_query_default (pad, parent, query);
+        break;
+    }
+
+    return ret;
+}
+
 
 /* plugin_init is a special function which is called
 * as soon as the plugin is loaded
