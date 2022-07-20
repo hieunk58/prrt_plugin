@@ -3,6 +3,7 @@
 #include <gst/gst.h>
 
 #define PRRT_DEFAULT_PORT 5000
+#define PRRT_DEFAULT_TARGET_DELAY 1000000
 
 /* PROPERTIES */
 enum {
@@ -14,6 +15,7 @@ enum {
 
 static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass);
 static void gst_prrtsrc_init (GstPRRTSrc *prrt_src);
+
 static gboolean gst_prrtsrc_src_query (GstPad *pad, GstObject *parent, 
     GstQuery *query);
 static GstStateChangeReturn
@@ -24,7 +26,9 @@ static void gst_prrtsrc_set_property (GObject * object, guint prop_id,
 static void gst_prrtsrc_get_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
 
- 
+/* open/close socket function */
+static gboolean gst_prrtsrc_open (GstPRRTSrc *src);
+
 static GstStaticPadTemplate src_factory =
 GST_STATIC_PAD_TEMPLATE (
     "src",
@@ -189,7 +193,8 @@ gst_prrtsrc_change_state (GstElement *element, GstStateChange transition) {
     switch (transition)
     {
     case GST_STATE_CHANGE_NULL_TO_READY:
-        // TODO call function to open socket for listening
+        if (!gst_prrtsrc_open (src))
+            goto open_failed;
         break;
     default:
         break;
@@ -211,6 +216,11 @@ gst_prrtsrc_change_state (GstElement *element, GstStateChange transition) {
 
     return ret;
 
+open_failed:
+    {
+        GST_DEBUG_OBJECT (src, "failed to open socket");
+        return GST_STATE_CHANGE_FAILURE;
+    }
 failure:
     {
         GST_DEBUG_OBJECT (src, "parent failed state change");
@@ -241,6 +251,29 @@ static GstCaps *gst_prrtsrc_getcaps (GstBaseSrc *src, GstCaps *filter) {
     }
 
     return result;
+}
+
+
+static gboolean gst_prrtsrc_open (GstPRRTSrc *src) {
+    GST_DEBUG ("gst_prrtsrc_open");
+    src->used_socket = PrrtSocket_create (PRRT_DEFAULT_PORT, 
+        PRRT_DEFAULT_TARGET_DELAY);
+    GST_DEBUG ("Binding to port: %u", src->port);
+
+    int res = PrrtSocket_bind (src->used_socket, "0.0.0.0", src->port);
+    if (res != 0) {
+        GST_ERROR_OBJECT(src, "Socket binding failed: %d.\n", res);
+        return FALSE;
+    }
+
+    if (src->used_socket == NULL) {
+        GST_ELEMENT_ERROR (src, RESOURCE, OPEN_READ, (NULL),
+        ("no socket error: %s", err->message));
+        g_clear_error (&err);
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 /* plugin_init is a special function which is called

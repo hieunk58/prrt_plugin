@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "../../PRRT/prrt/proto/socket.h"
+
 G_BEGIN_DECLS
 
 #define GST_TYPE_PRRTSRC (gst_prrtsrc_get_type())
@@ -22,7 +24,7 @@ struct _GstPRRTSrc
     GstPushSrc parent;
 
     /* socket */
-    //PrrtSocket *recv_socket;
+    PrrtSocket *used_socket;
 
     /* properties */
     guint16 port;
