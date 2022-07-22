@@ -8,6 +8,37 @@ GST_STATIC_PAD_TEMPLATE (
     GST_STATIC_CAPS_ANY
 );
 
+static void gst_prrtsink_class_init (GstPRRTSinkClass *klass);
+
+static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
+    GST_DEBUG ("gst_prrtsink_class_init");
+
+    GObjectClass        *gobject_class;
+    GstElementClass     *gstelement_class;
+    GstBaseSinkClass    *gstbase_sink_class;
+
+    gobject_class       = (GObjectClass *) klass;
+    gstelement_class    = (GstElementClass *) klass;
+    gstbase_sink_class  = GST_BASE_SINK_CLASS (klass);
+
+    //gobject_class->set_property = gst_prrtsink_set_property;
+    //gobject_class->get_property = gst_prrtsink_get_property;
+
+    // TODO install property
+
+    gst_element_class_set_static_metadata (gstelement_class,
+        "PRRT packet sender", "Source/Network",
+        "Send data over the network via PRRT",
+        "Hieu Nguyen <khachieunk@gmail.com>");
+
+    gst_element_class_add_pad_template (gstelement_class,
+        gst_static_pad_template_get (&sink_factory));
+
+    //gstbase_sink_class->render = gst_prrtsink_render;
+    //gstbase_sink_class->start = gst_prrtsink_start;
+    //gstbase_sink_class->stop = gst_prrtsink_stop;
+}
+
 static gboolean prrtsink_init (GstPlugin *prrtsink) {
     return gst_element_register(prrtsink, "prrtsink",
         GST_RANK_NONE,
