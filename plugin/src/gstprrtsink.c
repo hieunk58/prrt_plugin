@@ -24,7 +24,8 @@ static void gst_prrtsink_init (GstPRRTSink *prrtsink);
 
 static void gst_prrtsink_set_property(GObject *object, guint prop_id, 
     const GValue *value, GParamSpec *pspec);
-
+static void gst_prrtsink_get_property(GObject *object, guint prop_id, 
+    GValue *value, GParamSpec *pspec);
 
 static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     GST_DEBUG ("gst_prrtsink_class_init");
@@ -38,7 +39,7 @@ static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     gstbase_sink_class  = GST_BASE_SINK_CLASS (klass);
 
     gobject_class->set_property = gst_prrtsink_set_property;
-    //gobject_class->get_property = gst_prrtsink_get_property;
+    gobject_class->get_property = gst_prrtsink_get_property;
 
     // TODO install property
 
@@ -80,6 +81,23 @@ static void gst_prrtsink_set_property(GObject *object, guint prop_id,
     }
 }
 
+static void gst_prrtsink_get_property(GObject *object, guint prop_id, 
+    GValue *value, GParamSpec *pspec) {
+    GstPRRTSink *prrtsink = GST_PRRTSINK (object);
+
+    switch (prop_id)
+    {
+    case PROP_HOST:
+        g_value_set_string (value, prrtsink->host);
+        break;
+    case PROP_PORT:
+        g_value_set_uint (value, prrtsink->port);
+        break;
+    default:
+        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
+        break;
+    }
+}
 
 static gboolean prrtsink_init (GstPlugin *prrtsink) {
     return gst_element_register(prrtsink, "prrtsink",
