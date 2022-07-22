@@ -1,5 +1,8 @@
 #include "gstprrtsink.h"
 
+#define PRRT_SINK_DEFAULT_PORT 5000
+#define PRRT_SINK_DEFAULT_HOST "127.0.0.1"
+
 static GstStaticPadTemplate sink_factory =
 GST_STATIC_PAD_TEMPLATE (
     "sink",
@@ -9,6 +12,7 @@ GST_STATIC_PAD_TEMPLATE (
 );
 
 static void gst_prrtsink_class_init (GstPRRTSinkClass *klass);
+static void gst_prrtsink_init (GstPRRTSink *prrtsink);
 
 static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     GST_DEBUG ("gst_prrtsink_class_init");
@@ -37,6 +41,11 @@ static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     //gstbase_sink_class->render = gst_prrtsink_render;
     //gstbase_sink_class->start = gst_prrtsink_start;
     //gstbase_sink_class->stop = gst_prrtsink_stop;
+}
+
+static void gst_prrtsink_init (GstPRRTSink *prrtsink) {
+    prrtsink->host = PRRT_SINK_DEFAULT_HOST;
+    prrtsink->port = PRRT_SINK_DEFAULT_PORT;
 }
 
 static gboolean prrtsink_init (GstPlugin *prrtsink) {
