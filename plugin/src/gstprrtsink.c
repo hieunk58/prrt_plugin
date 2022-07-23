@@ -2,13 +2,17 @@
 
 #define PRRT_SINK_DEFAULT_PORT 5000
 #define PRRT_SINK_DEFAULT_HOST "127.0.0.1"
+#define PRRT_SINK_DEFAULT_MAX_BUFF_SIZE 1400
+#define PRRT_SINK_DEFAULT_TARGET_DELAY 2000*1000
 
 // PROPERTIES
 enum {
     PROP_0,
 
     PROP_HOST,
-    PROP_PORT
+    PROP_PORT,
+    PROP_TARGET_DELAY,
+    PROP_MAX_BUFF_SIZE
 };
 
 static GstStaticPadTemplate sink_factory =
@@ -26,6 +30,7 @@ static void gst_prrtsink_set_property(GObject *object, guint prop_id,
     const GValue *value, GParamSpec *pspec);
 static void gst_prrtsink_get_property(GObject *object, guint prop_id, 
     GValue *value, GParamSpec *pspec);
+static gboolean gst_prrt_sink_start(GstBaseSink *bsink);
 
 static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     GST_DEBUG ("gst_prrtsink_class_init");
@@ -51,6 +56,18 @@ static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
             "The port to send the packets to",
             0, 65535, PRRT_SINK_DEFAULT_PORT,
             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+    
+    g_object_class_install_property(gobject_class, PROP_TARGET_DELAY,
+        g_param_spec_uint("target_delay", "target_delay", 
+            "The target delay of the socket in micro seconds",
+            0, 4294967295, PRRT_SINK_DEFAULT_TARGET_DELAY,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+    g_object_class_install_property(gobject_class, PROP_MAX_BUFF_SIZE,
+        g_param_spec_uint("max_buff_size", "max_buff_size", 
+            "The maximum buffer size to be sent",
+            0, 4294967295, PRRT_SINK_DEFAULT_MAX_BUFF_SIZE,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
     gst_element_class_set_static_metadata (gstelement_class,
         "PRRT packet sender", "Source/Network",
@@ -68,6 +85,8 @@ static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
 static void gst_prrtsink_init (GstPRRTSink *prrtsink) {
     prrtsink->host = PRRT_SINK_DEFAULT_HOST;
     prrtsink->port = PRRT_SINK_DEFAULT_PORT;
+    prrtsink->max_buff_size = PRRT_SINK_DEFAULT_MAX_BUFF_SIZE;
+    prrtsink->target_delay = PRRT_SINK_DEFAULT_TARGET_DELAY;
 }
 
 static void gst_prrtsink_set_property(GObject *object, guint prop_id, 
@@ -83,6 +102,12 @@ static void gst_prrtsink_set_property(GObject *object, guint prop_id,
         break;
     case PROP_PORT:
         prrtsink->port = g_value_get_uint (value);
+        break;
+    case PROP_MAX_BUFF_SIZE:
+        prrtsink->max_buff_size = g_value_get_uint (value);
+        break;
+    case PROP_TARGET_DELAY:
+        prrtsink->target_delay = g_value_get_uint (value);
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
@@ -102,10 +127,46 @@ static void gst_prrtsink_get_property(GObject *object, guint prop_id,
     case PROP_PORT:
         g_value_set_uint (value, prrtsink->port);
         break;
+    case PROP_MAX_BUFF_SIZE:
+        g_value_set_uint (value, prrtsink->max_buff_size);
+        break;
+    case PROP_TARGET_DELAY:
+        g_value_set_uint (value, prrtsink->target_delay);
+        break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
         break;
     }
+}
+
+static gboolean gst_prrt_sink_start(GstBaseSink *bsink) {
+    GstPRRTSink *sink;
+    sink = GST_PRRTSINK (bsink);
+
+    // create a socket and set pacing to false
+    sink->used_socket = PrrtSocket_create (sink->max_buff_size, 
+                            sink->target_delay);
+    sink->used_socket->pacingEnabled = false;
+
+    // binding socket
+    int res_binding = PrrtSocket_bind (sink->used_socket, "0.0.0.0", sink->port);
+    if (res_binding != 0) {
+        GST_ERROR_OBJECT(sink, "Socket binding failed: %d.\n", res_binding);
+        return FALSE;
+    }
+
+    if (sink->used_socket = NULL) {
+        GST_ERROR ("could not create socket");
+        return FALSE;
+    }
+
+    int res_connect = PrrtSocket_connect (sink->used_socket, sink->host, sink->port);
+    if (res_connect != 1) {
+        GST_ERROR ("prrt socket connect failed");
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 static gboolean prrtsink_init (GstPlugin *prrtsink) {

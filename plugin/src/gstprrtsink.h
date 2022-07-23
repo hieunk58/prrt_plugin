@@ -3,6 +3,7 @@
 
 #include <gst/gst.h>
 #include <gst/base/gstbasesink.h>
+#include "../../PRRT/prrt/proto/socket.h"
 
 G_BEGIN_DECLS
 
@@ -23,9 +24,14 @@ typedef struct _GstPRRTSinkClass GstPRRTSinkClass;
 struct _GstPRRTSink {
     GstBaseSink parent;
 
+    // socket
+    PrrtSocket *used_socket;
+
     // properties
     gchar* host;
     guint16 port;
+    guint32 max_buff_size;
+    guint32 target_delay;
 
 };
 

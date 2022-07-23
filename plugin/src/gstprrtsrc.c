@@ -267,9 +267,7 @@ static gboolean gst_prrtsrc_open (GstPRRTSrc *src) {
     }
 
     if (src->used_socket == NULL) {
-        GST_ELEMENT_ERROR (src, RESOURCE, OPEN_READ, (NULL),
-        ("no socket error: %s", err->message));
-        g_clear_error (&err);
+        GST_ERROR ("could not create socket");
         return FALSE;
     }
 
