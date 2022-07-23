@@ -41,7 +41,16 @@ static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     gobject_class->set_property = gst_prrtsink_set_property;
     gobject_class->get_property = gst_prrtsink_get_property;
 
-    // TODO install property
+    g_object_class_install_property(gobject_class, PROP_HOST,
+        g_param_spec_string("host", "host", 
+            "The host address to send the packets to",
+            PRRT_SINK_DEFAULT_HOST, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+    g_object_class_install_property(gobject_class, PROP_PORT,
+        g_param_spec_uint("port", "port", 
+            "The port to send the packets to",
+            0, 65535, PRRT_SINK_DEFAULT_PORT,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
     gst_element_class_set_static_metadata (gstelement_class,
         "PRRT packet sender", "Source/Network",
