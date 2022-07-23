@@ -30,7 +30,8 @@ static void gst_prrtsink_set_property(GObject *object, guint prop_id,
     const GValue *value, GParamSpec *pspec);
 static void gst_prrtsink_get_property(GObject *object, guint prop_id, 
     GValue *value, GParamSpec *pspec);
-static gboolean gst_prrt_sink_start(GstBaseSink *bsink);
+static gboolean gst_prrtsink_start(GstBaseSink *bsink);
+static gboolean gst_prrtsink_stop(GstBaseSink *bsink);
 
 static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     GST_DEBUG ("gst_prrtsink_class_init");
@@ -78,8 +79,8 @@ static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
         gst_static_pad_template_get (&sink_factory));
 
     //gstbase_sink_class->render = gst_prrtsink_render;
-    //gstbase_sink_class->start = gst_prrtsink_start;
-    //gstbase_sink_class->stop = gst_prrtsink_stop;
+    gstbase_sink_class->start = gst_prrtsink_start;
+    gstbase_sink_class->stop = gst_prrtsink_stop;
 }
 
 static void gst_prrtsink_init (GstPRRTSink *prrtsink) {
@@ -139,7 +140,7 @@ static void gst_prrtsink_get_property(GObject *object, guint prop_id,
     }
 }
 
-static gboolean gst_prrt_sink_start(GstBaseSink *bsink) {
+static gboolean gst_prrtsink_start(GstBaseSink *bsink) {
     GstPRRTSink *sink;
     sink = GST_PRRTSINK (bsink);
 
@@ -165,6 +166,17 @@ static gboolean gst_prrt_sink_start(GstBaseSink *bsink) {
         GST_ERROR ("prrt socket connect failed");
         return FALSE;
     }
+
+    return TRUE;
+}
+
+static gboolean gst_prrtsink_stop(GstBaseSink *bsink) {
+    GstPRRTSink *sink;
+    sink = GST_PRRTSINK (bsink);
+
+    PrrtSocket_close (sink->used_socket);
+    free (sink->used_socket);
+    free (sink->host);
 
     return TRUE;
 }
