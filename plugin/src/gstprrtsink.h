@@ -22,17 +22,26 @@ typedef struct _GstPRRTSink      GstPRRTSink;
 typedef struct _GstPRRTSinkClass GstPRRTSinkClass;
 
 struct _GstPRRTSink {
-    GstBaseSink parent;
+  GstBaseSink parent;
 
-    // socket
-    PrrtSocket *used_socket;
+  // socket
+  PrrtSocket *used_socket;
 
-    // properties
-    gchar* host;
-    guint16 port;
-    guint32 max_buff_size;
-    guint32 target_delay;
+  // properties
+  gchar* host;
+  guint16 port;
+  guint32 max_buff_size;
+  guint32 target_delay;
+  gboolean negotiate_cap;
 
+  guint32 frame_size;
+
+  guint8  header_frame;
+  guint16 header_seq;
+  guint32 header_size;
+  
+  guint32 packet_data_size;
+  guint8* tmp_packet;
 };
 
 struct _GstPRRTSinkClass {

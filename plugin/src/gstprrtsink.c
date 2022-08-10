@@ -4,6 +4,7 @@
 #define PRRT_SINK_DEFAULT_HOST "127.0.0.1"
 #define PRRT_SINK_DEFAULT_MAX_BUFF_SIZE 1400
 #define PRRT_SINK_DEFAULT_TARGET_DELAY 2000*1000
+#define PRRT_SINK_DEFAULT_HEADER_SIZE 7
 
 // PROPERTIES
 enum {
@@ -32,6 +33,10 @@ static void gst_prrtsink_get_property(GObject *object, guint prop_id,
     GValue *value, GParamSpec *pspec);
 static gboolean gst_prrtsink_start(GstBaseSink *bsink);
 static gboolean gst_prrtsink_stop(GstBaseSink *bsink);
+static GstFlowReturn gst_prrtsink_render (GstBaseSink *bsink, GstBuffer *buffer);
+
+#define gst_prrtsink_parent_class parent_class
+G_DEFINE_TYPE (GstPRRTSink, gst_prrtsink, GST_TYPE_BASE_SINK);
 
 static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     GST_DEBUG ("gst_prrtsink_class_init");
@@ -78,7 +83,7 @@ static void gst_prrtsink_class_init (GstPRRTSinkClass *klass) {
     gst_element_class_add_pad_template (gstelement_class,
         gst_static_pad_template_get (&sink_factory));
 
-    //gstbase_sink_class->render = gst_prrtsink_render;
+    gstbase_sink_class->render = gst_prrtsink_render;
     gstbase_sink_class->start = gst_prrtsink_start;
     gstbase_sink_class->stop = gst_prrtsink_stop;
 }
@@ -88,6 +93,101 @@ static void gst_prrtsink_init (GstPRRTSink *prrtsink) {
     prrtsink->port = PRRT_SINK_DEFAULT_PORT;
     prrtsink->max_buff_size = PRRT_SINK_DEFAULT_MAX_BUFF_SIZE;
     prrtsink->target_delay = PRRT_SINK_DEFAULT_TARGET_DELAY;
+    prrtsink->negotiate_cap = TRUE;
+
+    prrtsink->frame_size = 0;
+    prrtsink->header_frame = 0;
+    prrtsink->header_seq = 0;
+    prrtsink->header_size = PRRT_SINK_DEFAULT_HEADER_SIZE;
+
+    prrtsink->packet_data_size = prrtsink->max_buff_size - prrtsink->header_size;
+    prrtsink->tmp_packet = calloc(PRRT_SINK_DEFAULT_MAX_BUFF_SIZE, sizeof(guint8));
+}
+
+// set header for the packet
+// frame nr 1 byte
+// seq nr 2 bytes
+// total size 4 bytes
+void set_header(guint8* arr, guint8 frame_nr, guint16 seq_nr, guint32 total_size) {
+    // frame number
+    arr[0] = frame_nr;
+    // seq number
+    arr[1] = (seq_nr >> 8);
+    arr[2] = (seq_nr << 8) >> 8;
+    // total size
+    arr[3] = total_size >> 24;
+    arr[4] = (total_size << 8) >> 24;
+    arr[5] = (total_size << 16) >> 24;
+    arr[6] = (total_size << 24) >> 24;
+}
+
+static GstFlowReturn gst_prrtsink_render (GstBaseSink *bsink, GstBuffer *buffer) {
+    GstPRRTSink *sink;
+    GstFlowReturn flow;
+
+    sink = GST_PRRTSINK (bsink);
+
+    // get stream capabilities
+    if(sink->negotiate_cap) {
+        GstCaps *caps = gst_pad_get_current_caps (GST_BASE_SINK_PAD (sink));
+        if (caps != NULL) {
+            gchar* description = gst_caps_to_string (caps);
+            GST_DEBUG ("current caps: %s", description);
+            PrrtSocket_send_sync (sink->used_socket, (const uint8_t*) description, 
+                strlen (description));
+            sink->negotiate_cap = FALSE;
+        } else {
+            GST_DEBUG ("Error! Could not get caps");
+            PrrtSocket_send_sync (sink->used_socket, NULL, 0);
+            sink->negotiate_cap = FALSE;
+        }
+    }
+
+    // reading buffer content
+    GstMapInfo info;
+    if (!gst_buffer_map (buffer, &info, GST_MAP_READ)) {
+        GST_ERROR_OBJECT(sink, "Getting buffer map error!!");
+        return GST_FLOW_ERROR;
+    }
+    GST_LOG("Data size: %lu", info.size);
+
+    sink->frame_size = info.size;
+    sink->header_seq = 0;
+    gsize remain_size = info.size;
+    guint8* remain_data = info.data;
+
+    while (remain_size > sink->packet_data_size) {
+        usleep (50);
+        // building temp packet
+        set_header (sink->tmp_packet, sink->header_frame, 
+            ++sink->header_seq,
+            sink->frame_size);
+        memcpy (sink->tmp_packet + sink->header_size, 
+            remain_data, sink->packet_data_size);
+
+        // sending temp packet
+        PrrtSocket_send_sync (sink->used_socket, sink->tmp_packet, 
+            sink->max_buff_size);
+        // update remain data
+        remain_size -= sink->packet_data_size;
+        // move pointer to the next data
+        remain_data += sink->packet_data_size;
+    }
+    usleep (10000);
+
+    // building and sending the last packet
+    set_header (sink->tmp_packet, sink->header_frame, 
+        sink->header_seq, sink->frame_size);
+    memcpy (sink->tmp_packet + sink->header_size, 
+        remain_data, remain_size);
+    PrrtSocket_send_sync (sink->used_socket, sink->tmp_packet, 
+        remain_size + sink->header_size);
+
+    // increase frame number
+    ++sink->header_frame;
+
+    gst_buffer_unmap (buffer, &info);
+    return GST_FLOW_OK
 }
 
 static void gst_prrtsink_set_property(GObject *object, guint prop_id, 
