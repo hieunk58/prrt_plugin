@@ -67,3 +67,20 @@ new_src_pad_cb (GstElement *element, GstPad *src_pad, GstPad *sink_pad)
     }
     g_free (name);
 }
+
+static void
+src_pad_cb (GstElement *element, GstPad *src_pad, GstPad *sink_pad)
+{
+    gchar *name;
+    name = gst_pad_get_name (src_pad);
+    g_print ("A new pad %s is created\n", name);
+
+    if (!strcmp(name, "video_0")) {
+        if (gst_pad_link (src_pad, sink_pad) != GST_PAD_LINK_OK) {
+            g_printerr ("Pad could not be linked\n");
+        } else {
+            g_print("Pad %s is linked\n", name);
+        }
+    }
+    g_free (name);
+}
