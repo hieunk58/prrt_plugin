@@ -28,6 +28,7 @@ static void gst_prrtsrc_get_property (GObject * object, guint prop_id,
 
 /* open/close socket function */
 static gboolean gst_prrtsrc_open (GstPRRTSrc *src);
+static gboolean gst_prrtsrc_close(GstPRRTSrc *src);
 
 static GstStaticPadTemplate src_factory =
 GST_STATIC_PAD_TEMPLATE (
@@ -208,7 +209,7 @@ gst_prrtsrc_change_state (GstElement *element, GstStateChange transition) {
     switch (transition)
     {
     case GST_STATE_CHANGE_READY_TO_NULL:
-        // TODO close socket, free memory
+        gst_prrtsrc_close (src);
         break;
     default:
         break;
@@ -271,6 +272,14 @@ static gboolean gst_prrtsrc_open (GstPRRTSrc *src) {
         return FALSE;
     }
 
+    return TRUE;
+}
+
+static gboolean gst_prrtsrc_close(GstPRRTSrc *src) {
+    GST_DEBUG ("gst_prrtsrc_close");
+    PrrtSocket_close(src->used_socket);
+    free(src->used_socket);
+    
     return TRUE;
 }
 
