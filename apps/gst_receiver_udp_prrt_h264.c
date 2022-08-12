@@ -10,13 +10,19 @@ typedef struct _CustomData {
     // UDP
     GstElement *udpsrc;
     GstElement *h264parser_udp;
-    GstElement *decoder_udp;
+    GstElement *decodebin_udp;
+    GstElement *timeoverlay_udp;
+    GstElement *textoverlay_udp;
+    GstElement *videocrop_udp;
     GstElement *queue_udp;
 
     // PRRT
     GstElement *prrtsrc;
     GstElement *h264parser_prrt;
-    GstElement *decoder_prrt;
+    GstElement *decodebin_prrt;
+    GstElement *timeoverlay_prrt;
+    GstElement *textoverlay_prrt;
+    GstElement *videocrop_prrt;
     GstElement *queue_prrt;
 
 } CustomData;
@@ -69,7 +75,7 @@ new_src_pad_cb (GstElement *element, GstPad *src_pad, GstPad *sink_pad)
 }
 
 static void
-src_pad_cb (GstElement *element, GstPad *src_pad, GstPad *sink_pad)
+new_pad_cb (GstElement *element, GstPad *src_pad, GstPad *sink_pad)
 {
     gchar *name;
     name = gst_pad_get_name (src_pad);
@@ -83,4 +89,79 @@ src_pad_cb (GstElement *element, GstPad *src_pad, GstPad *sink_pad)
         }
     }
     g_free (name);
+}
+
+int main(int argc, char *argv[]) {
+    if(!(argc == 3)) {
+        printf("Receiver: Wrong number of arguments. Usage: port_prrt port_udp\n");
+        return -1;
+    }
+
+    gushort port_prrt = (gushort) atoi(argv[1]);
+    gushort port_udp = (gushort) atoi(argv[2]);
+
+    GMainLoop *loop;
+    GstBus *bus;
+    guint watch_id;
+    GstStateChangeReturn ret;
+
+    CustomData data;
+
+    // initialization
+    gst_init (&argc, &argv);
+    loop = g_main_loop_new (NULL, FALSE);
+
+    // make elements
+    data.pipeline = gst_pipeline_new ("receiver_pipeline");
+
+    data.video_mixer = gst_element_factory_make ("video_mixer", "video_mixer");
+    data.video_convert = gst_element_factory_make ("video_convert", "video_convert");
+    data.video_sink = gst_element_factory_make ("video_sink", "video_sink");
+    data.queue_video = gst_element_factory_make ("queue", "queue_video");
+
+    // udp
+    data.udpsrc = gst_element_factory_make ("udpsrc", "udpsrc");
+    data.h264parser_udp = gst_element_factory_make ("h264parser", "h264parser_udp");
+    data.decodebin_udp = gst_element_factory_make ("decodebin", "decodebin_udp");
+    data.timeoverlay_udp = gst_element_factory_make ("timeoverlay", "timeoverlay_udp");
+    data.textoverlay_udp = gst_element_factory_make ("textoverlay", "textoverlay_udp");
+    data.videocrop_udp = gst_element_factory_make ("videocrop", "videocrop_udp");
+    data.queue_udp = gst_element_factory_make ("queue", "queue_udp");
+    
+    // prrt
+    data.prrtsrc = gst_element_factory_make ("prrtsrc", "prrtsrc");
+    data.h264parser_prrt = gst_element_factory_make ("h264parser", "h264parser_prrt");
+    data.decodebin_prrt = gst_element_factory_make ("decodebin", "decodebin_prrt");
+    data.timeoverlay_prrt = gst_element_factory_make ("timeoverlay", "timeoverlay_prrt");
+    data.textoverlay_prrt = gst_element_factory_make ("textoverlay", "textoverlay_prrt");
+    data.videocrop_prrt = gst_element_factory_make ("videocrop", "videocrop_prrt");
+    data.queue_prrt = gst_element_factory_make ("queue", "queue_prrt");
+
+    if (!data.video_mixer ||
+        !data.video_convert ||
+        !data.video_sink ||
+        !data.queue_video ||
+        !data.udpsrc ||
+        !data.h264parser_udp ||
+        !data.decodebin_udp ||
+        !data.timeoverlay_udp ||
+        !data.textoverlay_udp ||
+        !data.videocrop_udp ||
+        !data.queue_udp ||
+        !data.prrtsrc ||
+        !data.h264parser_prrt ||
+        !data.decodebin_prrt ||
+        !data.timeoverlay_prrt ||
+        !data.textoverlay_prrt ||
+        !data.videocrop_prrt ||
+        !data.queue_prrt) {
+        
+        g_printerr ("Not all elements could be created.\n");
+        return -1;
+    } else if (!data.prrtsrc) {
+        g_printerr ("Plugin prrtsrc not found.\n");
+        return -1;
+    }
+
+    return 0;
 }
