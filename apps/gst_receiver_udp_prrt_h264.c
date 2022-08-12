@@ -163,5 +163,20 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    // set properties
+    g_object_set (G_OBJECT (data.video_sink), "sync", 0, NULL);
+    g_object_set (G_OBJECT (data.udpsrc), "port", port_udp, "reuse", 1, NULL);
+    g_object_set (G_OBJECT (data.prrtsrc), "port", port_prrt, NULL);
+
+    g_object_set (G_OBJECT (data.timeoverlay_udp), "valignment", 2, "halignment", 2, NULL);
+    g_object_set (G_OBJECT (data.textoverlay_udp), "text", "UDP", "valignment", 
+        2, "halignment", 0, "font-desc", "12", NULL);
+    g_object_set (G_OBJECT (data.videocrop_udp), "right", 512, NULL);
+
+    g_object_set (G_OBJECT (data.timeoverlay_prrt), "valignment", 2, "halignment", 2, NULL);
+    g_object_set (G_OBJECT (data.textoverlay_prrt), "text", "PRRT", "valignment", 
+        2, "halignment", 2, "font-desc", "12", NULL);
+    g_object_set (G_OBJECT (data.videocrop_prrt), "left", 512, NULL);
+
     return 0;
 }
