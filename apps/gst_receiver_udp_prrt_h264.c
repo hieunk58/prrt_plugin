@@ -264,5 +264,27 @@ int main(int argc, char *argv[]) {
     GstPad* sink_1 = gst_element_get_static_pad(data.video_mixer, "sink_1");
     g_object_set(sink_1, "xpos", 512, NULL);
 
+    // Start playing 
+    ret = gst_element_set_state (data.pipeline, GST_STATE_PLAYING);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+        g_printerr ("Unable to set the pipeline to the playing state.\n");
+        gst_object_unref (data.pipeline);
+        return -1;
+    }
+
+    // Listen to the bus
+    bus = gst_element_get_bus (data.pipeline);
+    gst_bus_add_signal_watch (bus);
+    gst_object_unref (bus);
+
+    // run glib main loop
+    g_main_loop_run (loop);
+
+    // free resources
+    gst_element_set_state (data.pipeline, GST_STATE_NULL);
+    gst_object_unref (data.pipeline);
+    g_source_remove (watch_id);
+    g_main_loop_unref (loop);
+
     return 0;
 }
