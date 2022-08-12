@@ -106,6 +106,11 @@ int main(int argc, char *argv[]) {
     GstStateChangeReturn ret;
 
     CustomData data;
+    GstPadTemplate *video_mixer_sink_pad_template;
+    GstPad *video_mixer_udp_pad, *video_mixer_prrt_pad;
+    GstPad *queue_udp_pad, *queue_prrt_pad;
+    GstPad *h264parser_udp_pad, *h264parser_prrt_pad;
+    GstPad *timeoverlay_udp_pad, *timeoverlay_prrt_pad;
 
     // initialization
     gst_init (&argc, &argv);
@@ -177,6 +182,87 @@ int main(int argc, char *argv[]) {
     g_object_set (G_OBJECT (data.textoverlay_prrt), "text", "PRRT", "valignment", 
         2, "halignment", 2, "font-desc", "12", NULL);
     g_object_set (G_OBJECT (data.videocrop_prrt), "left", 512, NULL);
+
+    // Build the pipeline
+    gst_bin_add_many (GST_BIN (data.pipeline),
+        data.video_mixer,
+        data.video_convert,
+        data.video_sink,
+        data.queue_video,
+        data.udpsrc,
+        data.h264parser_udp,
+        data.decodebin_udp,
+        data.timeoverlay_udp,
+        data.textoverlay_udp,
+        data.videocrop_udp,
+        data.queue_udp,
+        data.prrtsrc,
+        data.h264parser_prrt,
+        data.decodebin_prrt,
+        data.timeoverlay_prrt,
+        data.textoverlay_prrt,
+        data.videocrop_prrt,
+        data.queue_prrt, NULL);
+
+    // link elements with always pads
+    if (!gst_element_link_many (data.video_mixer, data.queue_video, 
+                                data.video_convert, data.video_sink, NULL) ||
+        !gst_element_link_many(data.h264parser_prrt, data.decodebin_prrt, NULL) ||
+        !gst_element_link_many(data.timeoverlay_prrt, data.textoverlay_prrt, 
+                                data.videocrop_prrt, NULL) ||
+        !gst_element_link_many(data.h264parser_udp, data.decodebin_udp, NULL) ||
+        !gst_element_link_many(data.timeoverlay_udp, data.textoverlay_udp, 
+                                data.videocrop_udp, NULL) ||
+        !gst_element_link_many(data.videocrop_prrt, data.queue_prrt, NULL) ||
+        !gst_element_link_many(data.videocrop_udp, data.queue_udp, NULL)) 
+    {
+        g_printerr ("Link elements failed!!\n");
+        return -1;
+    }
+
+    // link videomixer
+    video_mixer_sink_pad_template = gst_element_class_get_pad_template (
+        GST_ELEMENT_GET_CLASS (data.video_mixer), "sink_%u");
+    // for UDP
+    video_mixer_udp_pad = gst_element_request_pad (data.video_mixer, 
+        video_mixer_sink_pad_template, NULL, NULL);
+    g_print ("Request pad %s for UDP\n", gst_pad_get_name (video_mixer_udp_pad));
+    queue_udp_pad = gst_element_get_static_pad (data.queue_udp, "src");
+    // for PRRT
+    video_mixer_prrt_pad = gst_element_request_pad (data.video_mixer, 
+        video_mixer_sink_pad_template, NULL, NULL);
+    g_print ("Request pad %s for PRRT\n", gst_pad_get_name (video_mixer_prrt_pad));
+    queue_prrt_pad = gst_element_get_static_pad (data.queue_prrt, "src");
+
+    if (gst_pad_link (queue_udp_pad, video_mixer_udp_pad) != GST_PAD_LINK_OK ||
+        gst_pad_link (queue_prrt_pad, video_mixer_prrt_pad) != GST_PAD_LINK_OK) {
+        g_printerr ("Could not link videomixer.\n");
+        gst_object_unref (data.pipeline);
+        return -1;
+    }
+    gst_object_unref (queue_udp_pad);
+    gst_object_unref (queue_prrt_pad);
+
+    // link h264 parser pad
+    h264parser_prrt_pad = gst_element_get_static_pad (data.h264parser_prrt, "sink");
+    g_signal_connect (data.prrtsrc, "pad-added", G_CALLBACK (new_pad_cb), 
+        h264parser_prrt_pad);
+    
+    h264parser_udp_pad = gst_element_get_static_pad (data.h264parser_udp, "sink");
+    g_signal_connect (data.udpsrc, "pad-added", G_CALLBACK (new_pad_cb), 
+        h264parser_udp_pad);
+
+    // link timeoverlay pad
+    timeoverlay_prrt_pad = gst_element_get_static_pad (data.timeoverlay_prrt, "video_sink");
+    g_signal_connect (data.decodebin_prrt, "pad-added", G_CALLBACK (new_src_pad_cb),
+        timeoverlay_prrt_pad);
+    timeoverlay_udp_pad = gst_element_get_static_pad (data.timeoverlay_udp, "video_sink");
+    g_signal_connect (data.decodebin_udp, "pad-added", G_CALLBACK (new_src_pad_cb),
+        timeoverlay_udp_pad);
+
+    // Set second video position
+    GstPad* sink_1 = gst_element_get_static_pad(data.video_mixer, "sink_1");
+    g_object_set(sink_1, "xpos", 512, NULL);
 
     return 0;
 }
