@@ -382,7 +382,7 @@ static void gst_prrtsrc_set_caps (GstPRRTSrc *src) {
         GstCaps *negotiated_caps = gst_caps_from_string (src->tmp_caps);
         src->caps = negotiated_caps;
 
-        gst_pad_mark_reconfigure (GST_BASE_SRC_CAP (src));
+        gst_pad_mark_reconfigure (GST_BASE_SRC_PAD (src));
         GST_DEBUG_OBJECT(src, "Set caps: %s", src->tmp_caps);
     }
     free (src->tmp_caps);
@@ -415,7 +415,7 @@ gst_prrtsrc_fill (GstPushSrc *psrc, GstBuffer *outbuf) {
     GstMemory *mem = gst_allocator_alloc (NULL, 
                         src->ring_buff_frame_size[src->current_buffer] - 4096, 
                         NULL);
-    gst_buffer_append_memory (outbuf, mem)                    
+    gst_buffer_append_memory (outbuf, mem);                    
     
     GstMapInfo map;
     gst_buffer_map (outbuf, &map, GST_MAP_WRITE);

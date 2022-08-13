@@ -123,7 +123,6 @@ void set_header(guint8* arr, guint8 frame_nr, guint16 seq_nr, guint32 total_size
 
 static GstFlowReturn gst_prrtsink_render (GstBaseSink *bsink, GstBuffer *buffer) {
     GstPRRTSink *sink;
-    GstFlowReturn flow;
 
     sink = GST_PRRTSINK (bsink);
 
@@ -187,7 +186,7 @@ static GstFlowReturn gst_prrtsink_render (GstBaseSink *bsink, GstBuffer *buffer)
     ++sink->header_frame;
 
     gst_buffer_unmap (buffer, &info);
-    return GST_FLOW_OK
+    return GST_FLOW_OK;
 }
 
 static void gst_prrtsink_set_property(GObject *object, guint prop_id, 
@@ -197,9 +196,9 @@ static void gst_prrtsink_set_property(GObject *object, guint prop_id,
     switch (prop_id)
     {
     case PROP_HOST:
-        const gchar *host = g_value_get_string (value);
-        g_free (prrtsink->host);
-        prrtsink->host = g_strdup (host);
+        // const char *host = g_value_get_string (value);
+        // g_free (prrtsink->host);
+        prrtsink->host = g_strdup (g_value_get_string (value));
         break;
     case PROP_PORT:
         prrtsink->port = g_value_get_uint (value);
@@ -256,7 +255,7 @@ static gboolean gst_prrtsink_start(GstBaseSink *bsink) {
         return FALSE;
     }
 
-    if (sink->used_socket = NULL) {
+    if (sink->used_socket == NULL) {
         GST_ERROR ("could not create socket");
         return FALSE;
     }
@@ -282,6 +281,7 @@ static gboolean gst_prrtsink_stop(GstBaseSink *bsink) {
 }
 
 static gboolean prrtsink_init (GstPlugin *prrtsink) {
+    GST_LOG ("Init prrtsink\n");
     return gst_element_register(prrtsink, "prrtsink",
         GST_RANK_NONE,
         GST_TYPE_PRRTSINK);

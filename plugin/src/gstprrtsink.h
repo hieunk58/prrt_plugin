@@ -7,8 +7,7 @@
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_PRRTSINK \
-  (gst_prrt_sink_get_type())
+#define GST_TYPE_PRRTSINK (gst_prrtsink_get_type())
 #define GST_PRRTSINK(obj) \
   (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_PRRTSINK,GstPRRTSink))
 #define GST_PRRTSINK_CLASS(klass) \
@@ -48,7 +47,7 @@ struct _GstPRRTSinkClass {
     GstBaseSinkClass parent_class;
 };
 
-GType gst_prrt_sink_get_type (void);
+GType gst_prrtsink_get_type (void);
 
 G_END_DECLS
 
