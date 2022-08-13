@@ -1,7 +1,6 @@
 #include "gstprrtsrc.h"
 
 #include <gst/gst.h>
-#include <pthread.h>
 #include <unistd.h>
 
 #define PRRT_DEFAULT_PORT 5000
@@ -35,7 +34,6 @@ static void gst_prrtsrc_get_property (GObject * object, guint prop_id,
 static GstFlowReturn gst_prrtsrc_fill (GstPushSrc *psrc, GstBuffer *outbuf);
 static void gst_prrtsrc_worker(void* input);
 
-/* open/close socket function */
 static gboolean gst_prrtsrc_open (GstPRRTSrc *src);
 static gboolean gst_prrtsrc_close(GstPRRTSrc *src);
 
@@ -102,6 +100,7 @@ static void gst_prrtsrc_init (GstPRRTSrc *prrt_src) {
     // TODO set some default values for plugin
     prrt_src->port = PRRT_DEFAULT_PORT;
     prrt_src->max_buff_size = PRRT_DEFAULT_MAX_BUF_SIZE;
+    prrt_src->cap_received = FALSE;
 
     // allocate memory for ring buffer
     prrt_src->ring_buff_size = PRRT_RING_BUFF_SIZE;
@@ -296,8 +295,8 @@ guint32 get_frame_size(guint8* arr) {
 /*----HELPER FUNCTIONS-----*/
 
 // mutex controls ring buffer
-pthread_mutex_t lck[PRRT_RING_BUFF_SIZE];
-pthread_mutext_t lck_next;
+GMutex lck[PRRT_RING_BUFF_SIZE];
+GMutex lck_next;
 int next = 0;
 bool finished = false;
 
@@ -327,7 +326,7 @@ static void gst_prrtsrc_worker(void* input) {
         num_packets = frame_size / (max_buff_data_size) + 
                         (frame_size % max_buff_data_size != 0);
         
-        pthread_mutex_lock (&lck[frame_num]);
+        g_mutex_lock (&lck[frame_num]);
 
         if (frame_size != src->ring_buff_frame_size[frame_num]) {
             src->ring_buffer[frame_num] = realloc (src->ring_buffer[frame_num],
@@ -350,30 +349,85 @@ static void gst_prrtsrc_worker(void* input) {
 
             --num_packets;
         }
-        pthread_mutex_unlock (&lck[original_frame_num]);
+        g_mutex_unlock (&lck[original_frame_num]);
 
-        pthread_mutex_lock (&lck_next);
+        g_mutex_lock (&lck_next);
         if (num_packets == 0) {
             next = original_frame_num;
             finished = true;
         }
-        pthread_mutex_unlock(&lck_next);
+        g_mutex_unlock(&lck_next);
 
         original_frame_num = get_frame_number (src->tmp_packet) % src->ring_buff_size;
     }                
 }
 
+// get cap
+static void gst_prrtsrc_get_caps (GstPRRTSrc *src) {
+    src->tmp_caps = malloc (PRRT_DEFAULT_MAX_BUF_SIZE * sizeof(guint8));
+    struct sockaddr addr;
+    src->cap_size = PrrtSocket_recv (src->used_socket, src->tmp_caps, &addr);
+
+    if (src->cap_size < 0) {
+        GST_ERROR_OBJECT (src, "Could not get cap from socket");
+    }
+
+    src->tmp_caps = realloc (src->tmp_caps, src->cap_size);
+}
+
+// set cap
+static void gst_prrtsrc_set_caps (GstPRRTSrc *src) {
+    if (src->cap_size > 0) {
+        src->cap_received = TRUE;
+        GstCaps *negotiated_caps = gst_caps_from_string (src->tmp_caps);
+        src->caps = negotiated_caps;
+
+        gst_pad_mark_reconfigure (GST_BASE_SRC_CAP (src));
+        GST_DEBUG_OBJECT(src, "Set caps: %s", src->tmp_caps);
+    }
+    free (src->tmp_caps);
+}
+
 // write data received from prrt to buffer
 static GstFlowReturn 
 gst_prrtsrc_fill (GstPushSrc *psrc, GstBuffer *outbuf) {
-    GstPRRTSrc *prrtsrc = GST_PRRTSRC (psrc);
+    GstPRRTSrc *src = GST_PRRTSRC (psrc);
+
+    if (!src->cap_received) {
+        gst_prrtsrc_get_caps (src);
+        gst_prrtsrc_set_caps (src);
+
+        pthread_t t_worker;
+        pthread_create (&t_worker, NULL, &gst_prrtsrc_worker, src);
+    }
+
+    while (true)
+    {
+        g_mutex_lock(&lck_next);
+        if (finished) {
+            finished = false;
+            src->current_buffer = next;
+            break;
+        }
+        g_mutex_unlock(&lck_next);
+    }
     
-    GstMemory *mem = gst_allocator_alloc (NULL, 65536 - 8, NULL);
-    GstMapInfo info;
+    GstMemory *mem = gst_allocator_alloc (NULL, 
+                        src->ring_buff_frame_size[src->current_buffer] - 4096, 
+                        NULL);
+    gst_buffer_append_memory (outbuf, mem)                    
+    
+    GstMapInfo map;
+    gst_buffer_map (outbuf, &map, GST_MAP_WRITE);
 
-    GInputVector
+    g_mutex_lock (&lck[src->current_buffer]);
+    memcpy (map.data, src->ring_buffer[src->current_buffer],
+            src->ring_buff_frame_size[src->current_buffer]);
+    g_mutex_unlock (&lck[src->current_buffer]);
 
-    if (!gst_buffer_map (outbuf))
+    gst_buffer_unmap (outbuf, &map);
+
+    return GST_FLOW_OK;
 }
 
 static gboolean gst_prrtsrc_open (GstPRRTSrc *src) {

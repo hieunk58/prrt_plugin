@@ -30,8 +30,11 @@ struct _GstPRRTSrc
     guint16 port;
     guint32 max_buff_size;
     guint8 *tmp_packet;    
-
+    gboolean cap_received;
+    int current_buffer;
     GstCaps *caps;
+    guint8 *tmp_caps;
+    gint32 cap_size;
 
     /* ring buffer */
     guint8 ring_buff_size;
