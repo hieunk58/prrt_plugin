@@ -29,11 +29,14 @@ struct _GstPRRTSrc
     /* properties */
     guint16 port;
     guint32 max_buff_size;
+    guint8 *tmp_packet;    
+
     GstCaps *caps;
 
-
     /* ring buffer */
-
+    guint8 ring_buff_size;
+    guint8 *ring_buff_frame_size;
+    guint8 **ring_buffer;
 };
 
 struct _GstPRRTSrcClass

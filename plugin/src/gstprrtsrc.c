@@ -1,9 +1,16 @@
 #include "gstprrtsrc.h"
 
 #include <gst/gst.h>
+#include <pthread.h>
+#include <unistd.h>
 
 #define PRRT_DEFAULT_PORT 5000
 #define PRRT_DEFAULT_TARGET_DELAY 1000000
+// Mostly IP header 20, UDP header 8, other headers, MTU 1500
+// max for data: 1500 - 28 = 1472 so set to 1400
+#define PRRT_DEFAULT_MAX_BUF_SIZE 1400
+#define PRRT_HEADER_SIZE 7
+#define PRRT_RING_BUFF_SIZE 10
 
 /* PROPERTIES */
 enum {
@@ -25,6 +32,8 @@ static void gst_prrtsrc_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
 static void gst_prrtsrc_get_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
+static GstFlowReturn gst_prrtsrc_fill (GstPushSrc *psrc, GstBuffer *outbuf);
+static void gst_prrtsrc_worker(void* input);
 
 /* open/close socket function */
 static gboolean gst_prrtsrc_open (GstPRRTSrc *src);
@@ -82,6 +91,8 @@ static void gst_prrtsrc_class_init (GstPRRTSrcClass *klass) {
     gstbasesrc_class->get_caps = gst_prrtsrc_getcaps;
     // TODO decide_allocation, unlock, unlock_stop
 
+    gstpushsrc_class->fill = gst_prrtsrc_fill;
+
 }
 
 /* _init() function is used to initialize a specific instance of prrtsrc type */
@@ -90,6 +101,20 @@ static void gst_prrtsrc_init (GstPRRTSrc *prrt_src) {
 
     // TODO set some default values for plugin
     prrt_src->port = PRRT_DEFAULT_PORT;
+    prrt_src->max_buff_size = PRRT_DEFAULT_MAX_BUF_SIZE;
+
+    // allocate memory for ring buffer
+    prrt_src->ring_buff_size = PRRT_RING_BUFF_SIZE;
+    prrt_src->ring_buffer = calloc (prrt_src->ring_buff_size, sizeof(guint8*));
+    
+    for (int i = 0; i < prrt_src->ring_buff_size; ++i) {
+        prrt_src->ring_buffer[i] = calloc (1, sizeof(guint8));
+    }
+
+    prrt_src->ring_buff_frame_size = calloc (prrt_src->ring_buff_size, sizeof(guint8));
+
+    // temp packet
+    prrt_src->tmp_packet = calloc (prrt_src->max_buff_size, sizeof(guint8));
 
     gst_pad_set_query_function (GST_BASE_SRC_PAD (prrt_src), gst_prrtsrc_src_query);
     
@@ -254,6 +279,102 @@ static GstCaps *gst_prrtsrc_getcaps (GstBaseSrc *src, GstCaps *filter) {
     return result;
 }
 
+/*----HELPER FUNCTIONS-----*/
+guint8 get_frame_number(guint8* arr) {
+    return arr[0];
+}
+
+guint8 get_seq_number(guint8* arr) {
+    guint8 res = arr[1];
+    return (res << 8) + arr[2];
+}
+
+guint32 get_frame_size(guint8* arr) {
+    guint32 res = (arr[3] << 24) + (arr[4] << 16) + (arr[5] << 8) + arr[6];
+    return res;
+}
+/*----HELPER FUNCTIONS-----*/
+
+// mutex controls ring buffer
+pthread_mutex_t lck[PRRT_RING_BUFF_SIZE];
+pthread_mutext_t lck_next;
+int next = 0;
+bool finished = false;
+
+static void gst_prrtsrc_worker(void* input) {
+    GstPushSrc *psrc = (GstPushSrc*) input;
+    GstPRRTSrc *src = GST_PRRTSRC (psrc);
+
+    struct sockaddr addr;
+
+    int offset = 0, num_packets = 0;
+
+    int32_t payload_size, data_size, frame_seq, original_frame_num, frame_num, frame_size;
+    
+    payload_size = PrrtSocket_receive_ordered_wait (src->used_socket, 
+                        src->tmp_packet, &addr, src->max_buff_size);
+    data_size = payload_size - PRRT_HEADER_SIZE;
+
+    // Extract info from received packet
+    frame_seq = get_seq_number (src->tmp_packet);
+    original_frame_num = get_frame_number (src->tmp_packet) % src->ring_buff_size;
+    frame_num = original_frame_num;
+    frame_size = get_frame_size (src->tmp_packet);
+
+    guint32 max_buff_data_size = src->max_buff_size - PRRT_HEADER_SIZE;
+    while (true)
+    {
+        num_packets = frame_size / (max_buff_data_size) + 
+                        (frame_size % max_buff_data_size != 0);
+        
+        pthread_mutex_lock (&lck[frame_num]);
+
+        if (frame_size != src->ring_buff_frame_size[frame_num]) {
+            src->ring_buffer[frame_num] = realloc (src->ring_buffer[frame_num],
+                                                    frame_size);
+            src->ring_buff_frame_size[frame_num] = frame_size;                             
+        }
+
+        while (frame_num == original_frame_num) {
+            offset = frame_seq * (PRRT_DEFAULT_MAX_BUF_SIZE - PRRT_HEADER_SIZE);
+            memcpy (src->ring_buffer[frame_num] + offset, 
+                src->tmp_packet + PRRT_HEADER_SIZE, data_size);
+            
+            // get new packet
+            payload_size = PrrtSocket_receive_ordered_wait (src->used_socket, 
+                        src->tmp_packet, &addr, src->max_buff_size);
+            data_size = payload_size - PRRT_HEADER_SIZE;
+            frame_seq = get_seq_number (src->tmp_packet);
+            frame_num = get_frame_number (src->tmp_packet) % src->ring_buff_size;
+            frame_size = get_frame_size (src->tmp_packet);
+
+            --num_packets;
+        }
+        pthread_mutex_unlock (&lck[original_frame_num]);
+
+        pthread_mutex_lock (&lck_next);
+        if (num_packets == 0) {
+            next = original_frame_num;
+            finished = true;
+        }
+        pthread_mutex_unlock(&lck_next);
+
+        original_frame_num = get_frame_number (src->tmp_packet) % src->ring_buff_size;
+    }                
+}
+
+// write data received from prrt to buffer
+static GstFlowReturn 
+gst_prrtsrc_fill (GstPushSrc *psrc, GstBuffer *outbuf) {
+    GstPRRTSrc *prrtsrc = GST_PRRTSRC (psrc);
+    
+    GstMemory *mem = gst_allocator_alloc (NULL, 65536 - 8, NULL);
+    GstMapInfo info;
+
+    GInputVector
+
+    if (!gst_buffer_map (outbuf))
+}
 
 static gboolean gst_prrtsrc_open (GstPRRTSrc *src) {
     GST_DEBUG ("gst_prrtsrc_open");
