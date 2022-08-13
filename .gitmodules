@@ -1,0 +1,3 @@
+[submodule "PRRT"]
+    path = "PRRT"
+    url = git@git.nt.uni-saarland.de:LARN/PRRT.git
