@@ -111,7 +111,7 @@ gint main(gint argc, gchar *argv[]) {
     queue_prrt_pad = gst_element_get_static_pad (queue_prrt, "sink");
 
     if (gst_pad_link (tee_udp_pad, queue_udp_pad) != GST_PAD_LINK_OK ||
-        gst_pad_linnk (tee_prrt_pad, queue_prrt_pad) != GST_PAD_LINK_OK) {
+        gst_pad_link (tee_prrt_pad, queue_prrt_pad) != GST_PAD_LINK_OK) {
         g_print ("Could not link Tee!\n");
         return -1;
     }

@@ -1,5 +1,8 @@
 #include <gst/gst.h>
 
+#include <stdlib.h>
+#include <string.h>
+
 typedef struct _CustomData {
     GstElement *pipeline;
     GstElement *video_mixer;
@@ -93,7 +96,7 @@ new_pad_cb (GstElement *element, GstPad *src_pad, GstPad *sink_pad)
 
 int main(int argc, char *argv[]) {
     if(!(argc == 3)) {
-        printf("Receiver: Wrong number of arguments. Usage: port_prrt port_udp\n");
+        g_print("Receiver: Wrong number of arguments. Usage: port_prrt port_udp\n");
         return -1;
     }
 
