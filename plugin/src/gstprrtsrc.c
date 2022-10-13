@@ -413,7 +413,7 @@ gst_prrtsrc_fill (GstPushSrc *psrc, GstBuffer *outbuf) {
     }
     
     GstMemory *mem = gst_allocator_alloc (NULL, 
-                        src->ring_buff_frame_size[src->current_buffer] - 4096, 
+                        src->ring_buff_frame_size[src->current_buffer], 
                         NULL);
     gst_buffer_append_memory (outbuf, mem);                    
     

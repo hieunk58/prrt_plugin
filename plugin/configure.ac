@@ -10,7 +10,7 @@ GSTPB_REQUIRED=1.0.0
 
 AC_CONFIG_SRCDIR([src/])
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_AUX_DIR([])
+AC_CONFIG_AUX_DIR([.])
 
 dnl required version of automake
 AM_INIT_AUTOMAKE([1.10])
@@ -75,7 +75,7 @@ dnl set the plugindir where plugins should be installed (for src/Makefile.am)
 if test "x${prefix}" = "x$HOME"; then
   plugindir="$HOME/.gstreamer-1.0/plugins"
 else
-  plugindir="\$(libdir)/x86_64-linux-gnu/gstreamer-1.0"
+  plugindir="\$(libdir)/gstreamer-1.0"
 fi
 AC_SUBST(plugindir)
 
