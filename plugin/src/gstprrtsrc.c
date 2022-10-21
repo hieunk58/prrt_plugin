@@ -1,5 +1,6 @@
 /*
  * GStreamer
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
  * to deal in the Software without restriction, including without limitation
@@ -58,8 +59,11 @@ GST_DEBUG_CATEGORY_STATIC (gst_prrt_source_debug);
 #define GST_CAT_DEFAULT gst_prrt_source_debug
 
 enum {
+    /* methods */
     SIGNAL_GET_STATS,
     SIGNAL_NEW_STATS,
+
+    /* FILL ME */
     LAST_SIGNAL
 };
 
@@ -70,6 +74,11 @@ enum {
     PROP_WINDOW
 };
 
+
+/* the capabilities of the inputs and outputs.
+ *
+ * describe the real formats here.
+ */
 static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE("src",
                                                                    GST_PAD_SRC,
                                                                    GST_PAD_ALWAYS,
@@ -89,6 +98,8 @@ static gboolean gst_prrt_source_src_query(GstPad *pad, GstObject *parent, GstQue
 static GstCaps *gst_prrt_source_getcaps(GstBaseSrc *src, GstCaps *filter);
 
 static GstFlowReturn gst_prrt_source_alloc(GstPushSrc *psrc, GstBuffer **buf);
+
+// static gboolean gst_prrt_source_negotiate(GstBaseSrc *basesrc);
 
 static GstFlowReturn gst_prrt_source_fill(GstPushSrc *psrc, GstBuffer *buf);
 
@@ -142,7 +153,8 @@ static void gst_prrt_source_class_init(GstPrrtSourceClass *klass) {
                                     g_param_spec_uint("window", "window", "The window",
                                                       0, 4294967295, PRRT_DEFAULT_WINDOW,
                                                       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-     gst_element_class_set_static_metadata (gstelement_class,
+
+    gst_element_class_set_static_metadata (gstelement_class,
         "PRRT packet receiver", "Source/Network",
         "Receive data over the network via PRRT",
         "Hieu Nguyen <khachieunk@gmail.com>");
@@ -205,16 +217,8 @@ static gboolean gst_prrt_source_src_query(GstPad *pad, GstObject *parent, GstQue
     GstPrrtSource *prrt_source = GST_PRRTSRC (parent);
     gboolean ret = TRUE;
 
+    /* Query types: DURATION, POSITION, SEEKING, URI */
     switch (GST_QUERY_TYPE(query)) {
-        case GST_QUERY_POSITION:
-            /* report the current position */     
-            break;
-        case GST_QUERY_DURATION:
-            /* report the duration */     
-            break;
-        case GST_QUERY_CAPS:
-            /* report the supported caps */     
-            break;
         case GST_QUERY_LATENCY:
             gst_query_set_latency(query, TRUE, 0, 200000);
             break;
@@ -244,9 +248,7 @@ static void gst_prrt_source_set_property(GObject *object, guint prop_id, const G
             GST_OBJECT_LOCK (prrt_source);
             old_caps = prrt_source->caps;
             prrt_source->caps = new_caps;
-
             GST_OBJECT_UNLOCK (prrt_source);
-
             if (old_caps) {
                 gst_caps_unref(old_caps);
             }
@@ -329,7 +331,7 @@ static GstFlowReturn gst_prrt_source_create(GstPushSrc *psrc, GstBuffer **buf) {
         GST_LOG("Received caps size: %u", n);
 
         if (n < 0) {
-            GST_ERROR_OBJECT(prrt_source, "Socket error");
+            GST_ERROR_OBJECT(prrt_source, "Socket receiving error");
             return GST_FLOW_ERROR;
         }
         buffer = realloc(buffer, n);
@@ -337,18 +339,21 @@ static GstFlowReturn gst_prrt_source_create(GstPushSrc *psrc, GstBuffer **buf) {
             GstCaps *negotiated_caps = gst_caps_from_string(buffer);
             prrt_source->caps = negotiated_caps;
             gst_pad_mark_reconfigure(GST_BASE_SRC_PAD (prrt_source));
+            //gst_pad_send_event (GST_BASE_SRC_PAD (prrt_source), gst_event_new_caps (negotiated_caps));
             GST_DEBUG_OBJECT(prrt_source, "set caps to:%s", buffer);
         }
         free(buffer);
     }
 
+
     while (1) {
+        GST_LOG("Loop start");
         char *buffer = (char *) calloc(1, MAX_PAYLOAD_LENGTH + 1);
         struct sockaddr_in addr;
 
         int n = PrrtSocket_receive_ordered_wait(prrt_source->recv_socket, buffer, &addr, prrt_source->window);
 
-        GST_LOG("Handle received data!");
+        GST_LOG("Received Something. Processing...");
         
         GST_DEBUG("Paces: %d receive, %d deliver", 
                   PrrtSocket_get_sock_opt(prrt_source->recv_socket, "prrtReceive_pace_effective"), 
@@ -388,8 +393,38 @@ static GstFlowReturn gst_prrt_source_create(GstPushSrc *psrc, GstBuffer **buf) {
     return (*buf == NULL) ? GST_FLOW_ERROR : GST_FLOW_OK;
 }
 
-static GstBuffer * gst_prrt_source_deliver_buffer(GstPushSrc *psrc, gchar *data, gsize size) {     GstPrrtSource *prrt_source = GST_PRRTSRC (psrc);     GstFlowReturn ret;     GstBuffer *buf;     prrt_source->total_size = size;     prrt_source->data = malloc(size);     memcpy(prrt_source->data, data, size);     GST_DEBUG("Wrote %u bytes of data to addr: %p", size, prrt_source->data);     buf = gst_buffer_new();     ret = gst_prrt_source_alloc(psrc, &buf);     if (ret != GST_FLOW_OK) {         goto alloc_failed;     }     GST_DEBUG("Allocation successfull.");     ret = gst_prrt_source_fill(psrc, buf);     if (ret != GST_FLOW_OK) {         goto fill_failed;     }     GST_DEBUG("Filling successfull.");     return buf;     alloc_failed:     GST_ERROR_OBJECT (psrc, "Failed to allocate buffer");     return NULL;     fill_failed:     GST_ERROR_OBJECT (psrc, "Failed to fill buffer");     return NULL; }
+static GstBuffer * gst_prrt_source_deliver_buffer(GstPushSrc *psrc, gchar *data, gsize size) {     
+    GstPrrtSource *prrt_source = GST_PRRTSRC (psrc);     
+    GstFlowReturn ret;     
+    GstBuffer *buf;     
+    prrt_source->total_size = size;     
+    prrt_source->data = malloc(size);
+    memcpy(prrt_source->data, data, size);
+        
+    GST_DEBUG("Wrote %u bytes of data to addr: %p", size, prrt_source->data);     
+    buf = gst_buffer_new();     
+    ret = gst_prrt_source_alloc(psrc, &buf);     
 
+    if (ret != GST_FLOW_OK) {  
+        goto alloc_failed;
+    }
+         
+    GST_DEBUG("Allocation successfull.");     
+
+    ret = gst_prrt_source_fill(psrc, buf);     
+
+    if (ret != GST_FLOW_OK) {         goto fill_failed;     }     
+    GST_DEBUG("Filling successfull.");     
+    return buf;
+    
+alloc_failed:     
+    GST_ERROR_OBJECT (psrc, "Failed to allocate buffer");     
+    return NULL;
+    
+fill_failed:     
+    GST_ERROR_OBJECT (psrc, "Failed to fill buffer");     
+    return NULL; 
+}
 
 static gboolean plugin_init (GstPlugin *prrtsrc) {
     return gst_element_register(prrtsrc, "prrtsrc",
@@ -403,7 +438,7 @@ static gboolean gst_prrt_source_open(GstPrrtSource *prrt_source) {
     GST_DEBUG("Binding to port: %u", prrt_source->port);
     int bind_var=PrrtSocket_bind(prrt_source->recv_socket, "0.0.0.0", prrt_source->port);
     if (bind_var != 0) {
-        GST_ERROR_OBJECT(prrt_source, "Socket binding failed: %d.\n", bind_var);
+        GST_ERROR_OBJECT(prrt_source, "Receive Socket binding failed: %d.\n", bind_var);
         return FALSE;
     }
     if (prrt_source->recv_socket == NULL) {
@@ -417,7 +452,7 @@ static gboolean gst_prrt_source_open(GstPrrtSource *prrt_source) {
 }
 
 static gboolean gst_prrt_source_close(GstPrrtSource *prrt_source) {
-    GST_DEBUG ("Closing socket");
+    GST_DEBUG ("closing socket");
     PrrtSocket_close(prrt_source->recv_socket);
     free(prrt_source->recv_socket);
     
@@ -440,7 +475,6 @@ static GstStateChangeReturn gst_prrt_source_change_state(GstElement *element, Gs
         default:
             break;
     }
-
     if ((result =
                  GST_ELEMENT_CLASS (parent_class)->change_state(element,
                                                                 transition)) == GST_STATE_CHANGE_FAILURE)
@@ -454,18 +488,17 @@ static GstStateChangeReturn gst_prrt_source_change_state(GstElement *element, Gs
             break;
     }
     return result;
-
-/* ERRORS */
-open_failed:
-{
-    GST_DEBUG_OBJECT (prrt_source, "Open socket failed");
-    return GST_STATE_CHANGE_FAILURE;
-}
-failure:
-{
-    GST_DEBUG_OBJECT (prrt_source, "State changing failed");
-    return result;
-}
+    /* ERRORS */
+    open_failed:
+    {
+        GST_DEBUG_OBJECT (prrt_source, "failed to open socket");
+        return GST_STATE_CHANGE_FAILURE;
+    }
+    failure:
+    {
+        GST_DEBUG_OBJECT (prrt_source, "parent failed state change");
+        return result;
+    }
 }
 
 GstStructure * gst_prrt_source_get_stats(GstPrrtSource *source) {
@@ -499,3 +532,4 @@ GST_PLUGIN_DEFINE (
     "none",
     "https://github.com/hieunk58/prrt_plugin"
 )
+
