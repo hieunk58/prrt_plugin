@@ -442,6 +442,6 @@ GST_PLUGIN_DEFINE(
     "a plugin transfers data using PRRT protocol",
     prrtsink_init,
     VERSION,
-    "MIT",
+    "MIT/X11",
     "none",
     "https://github.com/hieunk58/prrt_plugin")
