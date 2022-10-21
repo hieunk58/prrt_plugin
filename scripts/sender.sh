@@ -12,4 +12,4 @@ exec env GST_DEBUG=prrtsink:6,queue_dataflow:6 GST_DEBUG_DUMP_DOT_DIR=~/gst-debu
     ! mpegtsmux \
     ! rtpmp2tpay \
     ! queue name="prrtqueue" \
-    ! prrtsink host=$1 port=$2
+    ! prrtsink host=$1 port=$2 targetdelay=$targetdelay codingconfig=$codingconf
