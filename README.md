@@ -65,16 +65,16 @@ gst-inspector-1.0 prrtsrc
 
 ## Usage
 
-Here is an example of using two plugins prrtsink and prrtsrc to send a video with h264 encoding over the internet to the receiver.
+Here is an example of using two plugins prrtsink and prrtsrc to send a video with h264 encoding over the internet to the receiver. Go to folder scripts and run below commands:
 
 Sender  
 
 ```
-gst-launch-1.0 -v filesrc location=path/to/video ! qtdemux ! h264parse config-interval=-1 ! rtph264pay pt=96 name=pay0 ! prrtsink host=192.168.1.100 port=5000
+./sender.sh host=192.168.1.100 port=5000 file_to_send
 ```
 
 Receiver  
 
 ```
-gst-launch-1.0 -v prrtsrc port=5000 ! application/x-rtp ! rtph264depay ! avdec_h264 ! videoconvert ! textoverlay text="PRRT" valignment=top halignment=center font-desc="Sans, 16" ! ximagesink
+./receiver.sh 5000
 ```
