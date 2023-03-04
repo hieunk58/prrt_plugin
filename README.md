@@ -40,6 +40,7 @@ Then run file install.sh to generate Make file:
 After that go to the folder plugin/src, run below command to install our plugins:
 
 ```
+cd plugin/src
 sudo make install
 ```
 
@@ -70,7 +71,7 @@ Here is an example of using two plugins prrtsink and prrtsrc to send a video wit
 Sender  
 
 ```
-./sender.sh host=192.168.1.100 port=5000 file_to_send
+./sender.sh 192.168.1.100 5000 test.mp4
 ```
 
 Receiver  
