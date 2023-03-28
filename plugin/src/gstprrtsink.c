@@ -229,6 +229,7 @@ static void gst_prrt_sink_get_property(GObject *object, guint prop_id, GValue *v
     }
 }
 
+// Handle events
 static gboolean gst_prrt_sink_sink_event(GstPad *pad, GstObject *parent, GstEvent *event)
 {
     GstPrrtSink *prrt_sink;
@@ -263,15 +264,16 @@ static gboolean gst_prrt_sink_sink_event(GstPad *pad, GstObject *parent, GstEven
     return ret;
 }
 
+// variable determines the negotiated cap is already received or not
 gboolean negotiate_caps = TRUE;
 
+// Get capabilities of the stream and send data over PRRT
 static GstFlowReturn gst_prrt_sink_render(GstBaseSink *parent_sink, GstBuffer *buffer)
 {
     GstPrrtSink *prrt_sink;
     prrt_sink = GST_PRRTSINK(parent_sink);
 
-    /* Use this to find out the capabilities of the stream,
-    They need to be sent to the receiver. TODO: Sometimes this is NULL*/
+    // Use this to find out the capabilities of the stream
     if (negotiate_caps)
     {
         GstCaps *caps = gst_pad_get_current_caps(GST_BASE_SINK_PAD(prrt_sink));
@@ -313,6 +315,7 @@ static GstFlowReturn gst_prrt_sink_render(GstBaseSink *parent_sink, GstBuffer *b
         temp_data += prrt_sink->maxbuffersize;
         temp_size -= prrt_sink->maxbuffersize;
     }
+    // Send data over PRRT
     PrrtSocket_send_sync(prrt_sink->sender_socket, temp_data, temp_size);
     GST_LOG("Sent buffer size: %lu", temp_size);
     gst_buffer_unmap(buffer, &info);

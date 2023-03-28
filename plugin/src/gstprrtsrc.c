@@ -54,6 +54,7 @@ FILE *prrt_debug_log;
 
 #define PRRT_DEFAULT_PORT 5000
 #define PRRT_DEFAULT_WINDOW 20000
+#define BUFFER_SIZE 4096
 
 GST_DEBUG_CATEGORY_STATIC (gst_prrt_source_debug);
 #define GST_CAT_DEFAULT gst_prrt_source_debug
@@ -76,14 +77,12 @@ enum {
 
 
 /* the capabilities of the inputs and outputs.
- *
- * describe the real formats here.
  */
-static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE("src",
-                                                                   GST_PAD_SRC,
-                                                                   GST_PAD_ALWAYS,
-                                                                   GST_STATIC_CAPS_ANY
-);
+static GstStaticPadTemplate src_template = 
+    GST_STATIC_PAD_TEMPLATE("src",
+       GST_PAD_SRC,
+       GST_PAD_ALWAYS,
+       GST_STATIC_CAPS_ANY);
 
 #define gst_prrt_source_parent_class parent_class
 
@@ -99,8 +98,6 @@ static GstCaps *gst_prrt_source_getcaps(GstBaseSrc *src, GstCaps *filter);
 
 static GstFlowReturn gst_prrt_source_alloc(GstPushSrc *psrc, GstBuffer **buf);
 
-// static gboolean gst_prrt_source_negotiate(GstBaseSrc *basesrc);
-
 static GstFlowReturn gst_prrt_source_fill(GstPushSrc *psrc, GstBuffer *buf);
 
 static GstFlowReturn gst_prrt_source_create(GstPushSrc *psrc, GstBuffer **buf);
@@ -110,6 +107,9 @@ static GstStateChangeReturn gst_prrt_source_change_state(GstElement *element, Gs
 static gboolean gst_prrt_source_open(GstPrrtSource *prrt_source);
 
 static guint gst_prrt_source_signals[LAST_SIGNAL] = {0};
+
+static gboolean gst_prrt_src_unlock (GstBaseSrc * bsrc);
+static gboolean gst_prrt_src_unlock_stop (GstBaseSrc * bsrc);
 
 static GstBuffer *gst_prrt_source_deliver_buffer(GstPushSrc *psrc, gchar *data, gsize size);
 
@@ -154,14 +154,18 @@ static void gst_prrt_source_class_init(GstPrrtSourceClass *klass) {
                                                       0, 4294967295, PRRT_DEFAULT_WINDOW,
                                                       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-    gst_element_class_set_static_metadata (gstelement_class,
-        "PRRT packet receiver", "Source/Network",
-        "Receive data over the network via PRRT",
-        "Hieu Nguyen <khachieunk@gmail.com>");
+    gst_element_class_set_details_simple(gstelement_class,
+                                         "PRRT packet receiver",
+                                         "Source/Network",
+                                         "Receive data over network via PRRT",
+                                         "Andreas Schmidt <schmidt@nt.uni-saarland.de>");
 
     gst_element_class_add_static_pad_template(gstelement_class, &src_template);
+    
     gstelement_class->change_state = gst_prrt_source_change_state;
-
+    
+    gstbasesrc_class->unlock = gst_prrt_src_unlock;
+    gstbasesrc_class->unlock_stop = gst_prrt_src_unlock_stop;
     gstbasesrc_class->get_caps = gst_prrt_source_getcaps;
 
     gstpushsrc_class->alloc = gst_prrt_source_alloc;
@@ -291,29 +295,59 @@ static void gst_prrt_source_get_property(GObject *object, guint prop_id, GValue 
     }
 }
 
-gboolean first_time = TRUE;
+static gboolean
+gst_prrt_src_unlock (GstBaseSrc * bsrc)
+{
+  GstPrrtSource *src;
+  src = GST_PRRTSRC (bsrc);
+  GST_LOG_OBJECT (src, "Flushing");
+  
+  return TRUE;
+}
 
+static gboolean
+gst_prrt_src_unlock_stop (GstBaseSrc * bsrc)
+{
+  GstPrrtSource *src;
+  src = GST_PRRTSRC (bsrc);
+  GST_LOG_OBJECT (src, "No longer flushing");
+
+  return TRUE;
+}
+
+// Allocate memory and append to buffer
 static GstFlowReturn gst_prrt_source_alloc(GstPushSrc *psrc, GstBuffer **buf) {
     GstPrrtSource *prrt_source;
     prrt_source = GST_PRRTSRC (psrc);
 
     GST_DEBUG("Allocating %u bytes...", prrt_source->total_size);
+    
     GstMemory *mem;
     mem = gst_allocator_alloc(NULL, prrt_source->total_size, NULL);
     gst_buffer_append_memory(*buf, mem);
+    
     return GST_FLOW_OK;
 }
 
+// Fill data received from PRRt to buffer
 static GstFlowReturn gst_prrt_source_fill(GstPushSrc *psrc, GstBuffer *buf) {
     GstPrrtSource *prrt_source;
     prrt_source = GST_PRRTSRC (psrc);
-
     GstMapInfo info;
-    gst_buffer_map(buf, &info, GST_MAP_WRITE);
-    GST_DEBUG("Writing %lu bytes of data from (addr: %p) to (addr: %p) of buffer (addr: %p)", info.size,
-              prrt_source->data, info.data, buf);
+    
+    gst_buffer_map(buf, &info, GST_MAP_READWRITE);
+    
     memcpy(info.data, prrt_source->data, info.size);
+    
+    if (info.size) {
+        GST_DEBUG("info.size: %d", info.size);
+    }
+    if (info.size) {
+        GST_DEBUG("info.data:\n %s", info.data);
+    }
+    
     gst_buffer_unmap(buf, &info);
+    
     free(prrt_source->data);
 
     return GST_FLOW_OK;
@@ -321,120 +355,141 @@ static GstFlowReturn gst_prrt_source_fill(GstPushSrc *psrc, GstBuffer *buf) {
 
 static GstFlowReturn gst_prrt_source_create(GstPushSrc *psrc, GstBuffer **buf) {
     GstPrrtSource *prrt_source = GST_PRRTSRC (psrc);
+    GST_DEBUG("initial caps_received: %d", prrt_source->caps_received);
+    GError *error = NULL;
 
+    // set caps
     if(prrt_source->caps_received == FALSE) {
         prrt_source->caps_received = TRUE;
         char *buffer = malloc((MAX_PAYLOAD_LENGTH + 1) * sizeof(char));
 
         struct sockaddr_in addr;
         int n = PrrtSocket_recv(prrt_source->recv_socket, buffer, &addr);
-        GST_LOG("Received caps size: %u", n);
+        //int n = PrrtSocket_receive_ordered_wait(prrt_source->recv_socket, buffer, &addr, prrt_source->window);
+        GST_DEBUG("Received data from prrt: %d", n);
 
-        if (n < 0) {
-            GST_ERROR_OBJECT(prrt_source, "Socket receiving error");
+        if (n <= 0) {
+            GST_DEBUG("Socket receiving error");
             return GST_FLOW_ERROR;
         }
+        
+        // reallloc buffer to n (bytes)
         buffer = realloc(buffer, n);
-        if (n != 0) {
-            GstCaps *negotiated_caps = gst_caps_from_string(buffer);
-            prrt_source->caps = negotiated_caps;
-            gst_pad_mark_reconfigure(GST_BASE_SRC_PAD (prrt_source));
-            //gst_pad_send_event (GST_BASE_SRC_PAD (prrt_source), gst_event_new_caps (negotiated_caps));
-            GST_DEBUG_OBJECT(prrt_source, "set caps to:%s", buffer);
+        
+        GstCaps *negotiated_caps = gst_caps_from_string(buffer);
+        prrt_source->caps = negotiated_caps;
+        
+        // reconfigure cap
+        gst_pad_mark_reconfigure(GST_BASE_SRC_PAD (prrt_source));
+        GST_DEBUG("set caps to: %s", buffer);
+
+        // free allocated buffer
+        if (buffer) {
+            free(buffer);
         }
-        free(buffer);
     }
 
-
-    while (1) {
-        GST_LOG("Loop start");
+    // loop to wait for incomming data
+    while (true) {
+        GST_DEBUG("Loop start");
         char *buffer = (char *) calloc(1, MAX_PAYLOAD_LENGTH + 1);
         struct sockaddr_in addr;
-
+        
+        // poll data from prrt socket
         int n = PrrtSocket_receive_ordered_wait(prrt_source->recv_socket, buffer, &addr, prrt_source->window);
 
-        GST_LOG("Received Something. Processing...");
-        
-        GST_DEBUG("Paces: %d receive, %d deliver", 
-                  PrrtSocket_get_sock_opt(prrt_source->recv_socket, "prrtReceive_pace_effective"), 
-                  PrrtSocket_get_sock_opt(prrt_source->recv_socket, "appDeliver_pace_effective"));
+        if (n > 0) {
+            GST_DEBUG("Received Something. Processing...");
+            prrt_source->bytes_received += n;
+            prrt_source->packets_received++;
+            GST_DEBUG("Received data size: %u", n);
 
-        prrt_source->bytes_received += n;
-        prrt_source->packets_received++;
-        g_signal_emit(G_OBJECT (prrt_source), gst_prrt_source_signals[SIGNAL_NEW_STATS], 0, prrt_source->bytes_received,
-                      prrt_source->packets_received);
-        GST_LOG("Received data size: %u", n);
-        *buf = gst_prrt_source_deliver_buffer(psrc, buffer, n);
-        free(buffer);
-        GST_LOG("Returning buffer: (addr: %p, content: %p)", buf, *buf);
-        return (*buf == NULL) ? GST_FLOW_ERROR : GST_FLOW_OK;
+            // call functions to allocate memory and fill
+            *buf = gst_prrt_source_deliver_buffer(psrc, buffer, n);
+            
+            // free allocated buffer
+            if (buffer) {
+                free(buffer);
+            }
+            
+            return (*buf == NULL) ? GST_FLOW_ERROR : GST_FLOW_OK;
+        }
+        
     }
 
+    // allocate new memory for gst_buf
     GstBuffer *gst_buf;
     gst_buf = gst_buffer_new();
-
     GstFlowReturn ret;
+    
     ret = gst_prrt_source_alloc(psrc, &gst_buf);
     if (ret != GST_FLOW_OK) {
-        GST_ERROR_OBJECT (psrc, "Failed to allocate buffer");
+        GST_DEBUG ("Failed to allocate buffer");
         return ret;
     }
     GST_DEBUG("Allocation successfull.");
+    
+    // Fill data to gst_buf
     ret = gst_prrt_source_fill(psrc, gst_buf);
     if (ret != GST_FLOW_OK) {
-        GST_ERROR_OBJECT (psrc, "Failed to fill buffer");
+        GST_DEBUG ("Failed to fill buffer");
         return ret;
     }
-    GST_DEBUG("Filling successfull.");
+    GST_DEBUG("Filled data to buffer successfully");
 
     *buf = gst_buf;
-
-    GST_LOG("Returning buffer: (addr: %p, content: %p)", buf, *buf);
+    
     return (*buf == NULL) ? GST_FLOW_ERROR : GST_FLOW_OK;
+
 }
 
 static GstBuffer * gst_prrt_source_deliver_buffer(GstPushSrc *psrc, gchar *data, gsize size) {     
     GstPrrtSource *prrt_source = GST_PRRTSRC (psrc);     
     GstFlowReturn ret;     
-    GstBuffer *buf;     
-    prrt_source->total_size = size;     
-    prrt_source->data = malloc(size);
-    memcpy(prrt_source->data, data, size);
+    GstBuffer *buf; 
         
-    GST_DEBUG("Wrote %u bytes of data to addr: %p", size, prrt_source->data);     
+    prrt_source->total_size = size;     
+    prrt_source->data = malloc(size); 
+        
+    memcpy(prrt_source->data, data, size); 
+          
     buf = gst_buffer_new();     
-    ret = gst_prrt_source_alloc(psrc, &buf);     
-
-    if (ret != GST_FLOW_OK) {  
+    ret = gst_prrt_source_alloc(psrc, &buf);
+    
+    if (ret != GST_FLOW_OK) {         
         goto alloc_failed;
     }
          
-    GST_DEBUG("Allocation successfull.");     
-
+    GST_DEBUG("Allocation successfull.");
+         
     ret = gst_prrt_source_fill(psrc, buf);     
+    
+    if (ret != GST_FLOW_OK) {
+        goto fill_failed;
+    }     
+    
+    GST_DEBUG("Fill successfull.");     
+    return buf;     
 
-    if (ret != GST_FLOW_OK) {         goto fill_failed;     }     
-    GST_DEBUG("Filling successfull.");     
-    return buf;
-    
 alloc_failed:     
-    GST_ERROR_OBJECT (psrc, "Failed to allocate buffer");     
-    return NULL;
-    
+    GST_DEBUG ("Failed to allocate buffer");     
+    return NULL;     
 fill_failed:     
-    GST_ERROR_OBJECT (psrc, "Failed to fill buffer");     
+    GST_DEBUG ("Failed to fill buffer");     
     return NULL; 
 }
 
-static gboolean plugin_init (GstPlugin *prrtsrc) {
-    return gst_element_register(prrtsrc, "prrtsrc",
-        GST_RANK_NONE,
-        GST_TYPE_PRRTSRC);
+static gboolean prrtsrc_init(GstPlugin *prrtsrc) {
+    GST_DEBUG_CATEGORY_INIT(gst_prrt_source_debug, "prrtsrc",
+                            0, "Template prrtsrc");
+
+    return gst_element_register(prrtsrc, "prrtsrc", GST_RANK_NONE,
+                                GST_TYPE_PRRTSRC);
 }
 
 static gboolean gst_prrt_source_open(GstPrrtSource *prrt_source) {
     GST_DEBUG ("opening socket");
-    prrt_source->recv_socket = PrrtSocket_create(5000, 1000000);
+    prrt_source->recv_socket = PrrtSocket_create(5000, 500000);
     GST_DEBUG("Binding to port: %u", prrt_source->port);
     int bind_var=PrrtSocket_bind(prrt_source->recv_socket, "0.0.0.0", prrt_source->port);
     if (bind_var != 0) {
@@ -453,8 +508,10 @@ static gboolean gst_prrt_source_open(GstPrrtSource *prrt_source) {
 
 static gboolean gst_prrt_source_close(GstPrrtSource *prrt_source) {
     GST_DEBUG ("closing socket");
-    PrrtSocket_close(prrt_source->recv_socket);
-    free(prrt_source->recv_socket);
+    if (prrt_source->recv_socket) {
+        PrrtSocket_close(prrt_source->recv_socket);
+        prrt_source->recv_socket = NULL;
+    }
     
     fclose(prrt_debug_log);
 
